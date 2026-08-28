@@ -135,7 +135,6 @@
 .song__text-year,
 [ids="soc-links"] a,
 .tabs__item,
-.song__video-link,
 .footer,
 .footer a {
   color: var(--vc-muted);
@@ -149,7 +148,7 @@ a:visited {
   background-color: transparent;
 }
 
-:is([ids="soc-links"] a, .tabs__item, .song__video-link, .footer a) {
+:is([ids="soc-links"] a, .tabs__item, .footer a) {
   color: var(--vc-text);
 }
 
@@ -661,10 +660,12 @@ img.is-fullscreen {
   border: var(--ui-line-width) solid var(--ui-line-color);
 }
 
-/* Shared large portal/frame shadow, scoped to its three consumers. */
+/* Shared large portal/frame/player shadow, scoped to its consumers. */
 .frame-shadow,
 .shadow-large,
-.song-vibeframe:not(.shadow-off):not(.has-fullscreen-image) {
+.song-video-card,
+.song-vibeframe:not(.shadow-off):not(.has-fullscreen-image),
+.vcard-player-dock.has-player.is-simplified {
   --frame-shadow-large:
     0 0 12px 8px color-mix(in srgb, black 82%, transparent),
     0 0 28px 12px color-mix(in srgb, black 68%, transparent),
@@ -917,15 +918,6 @@ img:is(
   position: relative;
   top: auto;
   z-index: 1;
-}
-
-.song-portal-stage:has(
-  > .song-vibeframe:is(
-    [data-transmission="start"],
-    [data-transmission="pause"]
-  )
-) > .song__video-links:has(.song__video-link) {
-  display: flex;
 }
 
 .song-portal-stage:has(> .song-vibeframe[hidden]) {
@@ -1590,6 +1582,7 @@ html.vcard-settings-dialog-open {
   align-items: stretch;
   justify-content: center;
   padding: 0 var(--page-inline-padding) var(--page-inline-padding);
+  font-family: var(--vc-tech-font);
   color: var(--vc-text);
   background: color-mix(in srgb, var(--vc-win) 78%, transparent);
   text-align: left;
@@ -2090,8 +2083,12 @@ html.vcard-settings-dialog-open {
 .vcard-player-dock.is-simplified {
   display: grid;
   grid-template-columns: 27px minmax(0, 1fr) 27px;
-  grid-template-rows: 28px;
+  grid-template-rows: 24px 24px;
   align-items: stretch;
+}
+
+.vcard-player-dock.has-player.is-simplified {
+  box-shadow: var(--frame-shadow-large);
 }
 
 @media (orientation: landscape) {
@@ -2105,18 +2102,29 @@ html.vcard-settings-dialog-open {
 }
 
 .vcard-player-dock.is-simplified .vcard-player-topline
-  > :not([data-plyr="play"]):not(.vcard-player-settings),
+  > :not([data-plyr="play"]):not(.vcard-player-title):not(.vcard-player-settings),
 .vcard-player-dock.is-simplified .vcard-player-secondline {
   display: none !important;
+}
+
+.vcard-player-dock.is-simplified .vcard-player-title {
+  display: flex !important;
+  grid-column: 1 / -1;
+  grid-row: 1;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  width: 100%;
+  min-height: 24px;
 }
 
 .vcard-player-dock.is-simplified .vcard-player-topline > [data-plyr="play"],
 .vcard-player-dock.is-simplified .vcard-player-topline > .vcard-player-settings {
   display: inline-flex !important;
-  grid-row: 1;
+  grid-row: 2;
   align-self: stretch;
   width: 27px;
-  height: 28px;
+  height: 24px;
 }
 
 .vcard-player-dock.is-simplified .vcard-player-topline > [data-plyr="play"] {
@@ -2129,23 +2137,30 @@ html.vcard-settings-dialog-open {
 
 .vcard-player-dock.is-simplified > .plyr {
   grid-column: 2;
-  grid-row: 1;
+  grid-row: 2;
   align-self: stretch;
   min-width: 0;
 }
 
 .vcard-player-dock.is-simplified .plyr--audio .plyr__controls {
   justify-content: stretch;
-  min-height: 28px;
-  height: 28px;
+  min-height: 24px;
+  height: 24px;
   padding: 0 4px;
   gap: 5px;
   background: black !important;
 }
 
 .vcard-player-dock.is-simplified .plyr__controls
-  > :not(.plyr__progress__container):not(.plyr__volume) {
+  > :not(.plyr__progress__container):not(.plyr__time):not(.plyr__volume) {
   display: none !important;
+}
+
+.vcard-player-dock.is-simplified .plyr__time {
+  display: block !important;
+  flex: 0 0 auto;
+  margin-inline: 0 !important;
+  white-space: nowrap;
 }
 
 .vcard-player-dock.is-simplified .plyr__progress__container {

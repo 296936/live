@@ -392,6 +392,244 @@ const sharedSongAudio = (() => {
   return audio;
 })();
 
+/*
+ * External video cards deliberately never embed a remote player.  RNorm has
+ * already cached the title and preview locally; the browser only chooses the
+ * provider reachable from this visitor's network and opens it in a new tab.
+ */
+(() => {
+  const slots = Array.from(document.querySelectorAll('.song-video-slot'));
+  if (!slots.length) return;
+
+  const providers = {
+    youtube: {
+      label: 'YOUTUBE',
+      probe: 'https://www.youtube.com/generate_204',
+    },
+    rutube: {
+      label: 'RUTUBE',
+      probe: 'https://rutube.ru/favicon.ico',
+    },
+  };
+  const configured = Object.fromEntries(Object.keys(providers).map((provider) => [
+    provider,
+    slots.some((slot) => Boolean(
+      slot.dataset[`${provider}Url`] && slot.dataset[`${provider}Preview`]
+    )),
+  ]));
+  const reachability = Object.fromEntries(Object.keys(providers).map((provider) => [
+    provider,
+    configured[provider] ? 'pending' : 'unreachable',
+  ]));
+  const PROBE_TIMEOUT_MS = 2500;
+  let activeSlot = null;
+  let probesSettled = false;
+  let probeGeneration = 0;
+
+  const card = document.createElement('div');
+  card.className = 'song-video-card';
+  card.hidden = true;
+
+  const videoLink = document.createElement('a');
+  videoLink.className = 'song-video-card__video';
+  videoLink.target = '_blank';
+  videoLink.rel = 'noopener noreferrer';
+
+  const previewImage = document.createElement('img');
+  previewImage.className = 'song-video-card__image';
+  previewImage.alt = '';
+  previewImage.decoding = 'async';
+
+  const title = document.createElement('span');
+  title.className = 'song-video-card__title';
+
+  const play = document.createElement('span');
+  play.className = 'song-video-card__play';
+  play.setAttribute('aria-hidden', 'true');
+
+  const footer = document.createElement('span');
+  footer.className = 'song-video-card__footer';
+
+  const providerLabel = document.createElement('span');
+  providerLabel.className = 'song-video-card__provider';
+
+  const channelLink = document.createElement('a');
+  channelLink.className = 'song-video-card__channel';
+  channelLink.target = '_blank';
+  channelLink.rel = 'noopener noreferrer';
+
+  const channelText = document.createElement('span');
+  channelText.className = 'song-video-card__channel';
+
+  videoLink.append(previewImage, title, play);
+  footer.append(providerLabel, channelLink, channelText);
+  card.append(videoLink, footer);
+
+  const clearCard = () => {
+    card.hidden = true;
+    card.classList.remove('is-youtube', 'is-rutube');
+    previewImage.removeAttribute('src');
+    videoLink.removeAttribute('href');
+    channelLink.removeAttribute('href');
+    channelLink.hidden = true;
+    channelText.hidden = true;
+    title.textContent = '';
+    providerLabel.textContent = '';
+    channelLink.textContent = '';
+    channelText.textContent = '';
+    if (activeSlot) activeSlot.hidden = true;
+  };
+
+  const hostMatches = (host, suffix) => (
+    host === suffix || host.endsWith(`.${suffix}`)
+  );
+
+  const safeProviderUrl = (value, provider) => {
+    try {
+      const parsed = new URL(String(value || ''));
+      if (parsed.protocol !== 'https:') return '';
+      const host = parsed.hostname.toLowerCase();
+      if (provider === 'youtube') {
+        return hostMatches(host, 'youtube.com')
+          || hostMatches(host, 'youtube-nocookie.com')
+          || hostMatches(host, 'youtu.be')
+          ? parsed.href
+          : '';
+      }
+      return hostMatches(host, 'rutube.ru') ? parsed.href : '';
+    } catch (error) {
+      return '';
+    }
+  };
+
+  const safeLocalPreview = (value) => {
+    const preview = String(value || '').trim();
+    if (!preview || /^[a-z][a-z0-9+.-]*:/i.test(preview) || preview.startsWith('//')) {
+      return '';
+    }
+    return preview;
+  };
+
+  const slotProvider = (slot, provider) => {
+    const prefix = provider;
+    const url = safeProviderUrl(slot.dataset[`${prefix}Url`], provider);
+    const preview = safeLocalPreview(slot.dataset[`${prefix}Preview`]);
+    if (!url || !preview) return null;
+    return {
+      provider,
+      url,
+      preview,
+      title: String(slot.dataset[`${prefix}Title`] || '').trim(),
+      channel: String(slot.dataset[`${prefix}Channel`] || '').trim(),
+      channelUrl: safeProviderUrl(slot.dataset[`${prefix}ChannelUrl`], provider),
+    };
+  };
+
+  const selectedProvider = (slot) => {
+    if (!probesSettled || !slot) return null;
+    for (const provider of ['youtube', 'rutube']) {
+      const value = slotProvider(slot, provider);
+      if (value && reachability[provider] === 'reachable') return value;
+    }
+    return null;
+  };
+
+  const renderActiveCard = () => {
+    clearCard();
+    const data = selectedProvider(activeSlot);
+    if (!data || !activeSlot) return;
+
+    const label = providers[data.provider].label;
+    const displayTitle = data.title || label;
+    card.classList.add(`is-${data.provider}`);
+    videoLink.href = data.url;
+    videoLink.setAttribute('aria-label', `${label}: ${displayTitle}`);
+    previewImage.src = data.preview;
+    title.textContent = displayTitle;
+    providerLabel.textContent = label;
+    if (data.channel && data.channelUrl) {
+      channelLink.href = data.channelUrl;
+      channelLink.textContent = data.channel;
+      channelLink.hidden = false;
+    } else if (data.channel) {
+      channelText.textContent = data.channel;
+      channelText.hidden = false;
+    }
+    activeSlot.append(card);
+    activeSlot.hidden = false;
+    card.hidden = false;
+    document.dispatchEvent(new CustomEvent('vcard:video-card-visible', {
+      detail: { preview: activeSlot.closest('.song__preview') },
+    }));
+  };
+
+  const probeProvider = async (provider, generation) => {
+    if (!configured[provider]) return;
+    const controller = typeof AbortController === 'function'
+      ? new AbortController()
+      : null;
+    const timeout = window.setTimeout(() => controller?.abort(), PROBE_TIMEOUT_MS);
+    try {
+      await fetch(providers[provider].probe, {
+        cache: 'no-store',
+        credentials: 'omit',
+        mode: 'no-cors',
+        signal: controller?.signal,
+      });
+      if (generation === probeGeneration) reachability[provider] = 'reachable';
+    } catch (error) {
+      if (generation === probeGeneration) reachability[provider] = 'unreachable';
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  };
+
+  const probeProviders = async () => {
+    const generation = ++probeGeneration;
+    probesSettled = false;
+    for (const provider of Object.keys(providers)) {
+      reachability[provider] = configured[provider] ? 'pending' : 'unreachable';
+    }
+    clearCard();
+    await Promise.all(Object.keys(providers).map((provider) => (
+      probeProvider(provider, generation)
+    )));
+    if (generation !== probeGeneration) return;
+    probesSettled = true;
+    renderActiveCard();
+  };
+
+  videoLink.addEventListener('click', () => {
+    if (sharedSongAudio && !sharedSongAudio.paused) sharedSongAudio.pause();
+  });
+
+  document.addEventListener('vcard:song-open', (event) => {
+    const preview = event.target && event.target.closest('.song__preview');
+    activeSlot = preview && preview.querySelector('.song-video-slot');
+    renderActiveCard();
+  });
+
+  document.addEventListener('vcard:song-close', (event) => {
+    const preview = event.target && event.target.closest('.song__preview');
+    if (!activeSlot || !preview || !preview.contains(activeSlot)) return;
+    clearCard();
+    activeSlot = null;
+  });
+
+  window.addEventListener('offline', () => {
+    for (const provider of Object.keys(providers)) reachability[provider] = 'unreachable';
+    probesSettled = true;
+    renderActiveCard();
+  });
+  window.addEventListener('online', probeProviders);
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', probeProviders, { once: true });
+  } else {
+    probeProviders();
+  }
+})();
+
 // A completed song commits the media already used by this VCard session into
 // the managed cache. Subsequent visits are served by sw.js without another download.
 sharedSongAudio?.addEventListener('ended', () => {
@@ -410,10 +648,10 @@ sharedSongAudio?.addEventListener('ended', () => {
 (() => {
   if (!sharedSongAudio) return;
 
-  // User-owned animation sets.  A slot may replace v_fin1/v_fin2 with its
-  // own media while retaining the same PortalTV contract.
-  const FINISH_LIST = 'usr/v_fin1/list.js';
-  const HANDS_LIST = 'usr/v_fin2/list.js';
+  // Template-owned animation sets. An instance sys/<folder> replaces the
+  // corresponding template folder as a whole during the build.
+  const FINISH_LIST = 'sys/v_cass/list.js';
+  const HANDS_LIST = 'sys/v_hands/list.js';
   let portalMotionAllowed = document.documentElement.dataset.visBri !== '0';
 
   const randomBetween = (minimum, maximum) => (
@@ -637,7 +875,7 @@ sharedSongAudio?.addEventListener('ended', () => {
         const video = sources.find((source) => /\.(?:mp4|webm|ogv|m4v|mov)(?:[?#].*)?$/i.test(source));
         const poster = sources.find((source) => /\.(?:avif|gif|jpe?g|png|webp)(?:[?#].*)?$/i.test(source));
         if (!video || !poster) {
-          throw new Error('v_fin1 needs one video and one graphic file');
+          throw new Error('v_cass needs one video and one graphic file');
         }
         state.finishMedia = { video, poster };
         const posterPreload = new Image();
@@ -646,7 +884,7 @@ sharedSongAudio?.addEventListener('ended', () => {
         return state.finishMedia;
       })
       .catch((error) => {
-        console.warn('VCard portal: cannot load v_fin1 media', error);
+        console.warn('VCard portal: cannot load v_cass media', error);
         return null;
       })
       .finally(() => { state.finishPromise = null; });
@@ -1117,7 +1355,7 @@ sharedSongAudio?.addEventListener('ended', () => {
     if (!state.preview) return;
     startTrackEndSequence();
     // The cassette spins through the final audio sample and only then
-    // becomes the graphic static cassette from v_fin1.
+    // becomes the graphic static cassette from v_cass.
     if (state.phase === 'finish') showTape({ phase: 'finish' });
   });
 })();
@@ -2711,11 +2949,10 @@ const vcardMedia = (() => {
     // A g/m (or legacy p/m) portal is composed from two independent color layers:
     // the grayscale photograph follows the bright page text color, while the
     // masked object is painted by the canvas overlay with --vc-acc.
-    const duoGray = mode === 'duo' && root.dataset.duoGray === 'on';
     const isImageOfDay = image.classList.contains('iod-image')
       || image.hasAttribute('image-day');
     const baseMode = mode === 'duo'
-      ? (duoGray ? 'gray' : ((group.pairedPortal || isImageOfDay) ? 'color-tint' : 'duo'))
+      ? ((group.pairedPortal || isImageOfDay) ? 'color-tint' : 'duo')
       : mode;
     applyImageEffect(image, baseMode);
     if (group.pairedPortal) {
@@ -5039,7 +5276,7 @@ const vcardMedia = (() => {
         brightnessZeroButton.type = 'button';
         brightnessZeroButton.className = 'plyr__control plyr__controls__item vcard-player-background vcard-player-brightness-zero';
         brightnessZeroButton.dataset.vcardBrightnessZero = 'true';
-        brightnessZeroButton.textContent = '✕';
+        brightnessZeroButton.textContent = '0';
         const brightnessZeroHint = vcardHints.playerBrightnessZero || 'Фон: яркость 0';
         brightnessZeroButton.setAttribute('aria-label', brightnessZeroHint);
         brightnessZeroButton.setAttribute('title', brightnessZeroHint);
@@ -5988,8 +6225,25 @@ const vcardMedia = (() => {
     });
     window.addEventListener('pagehide', () => rememberSongPosition(undefined, true));
 
+    const visiblePreviewVideoSlot = (preview) => {
+      const slot = preview && preview.querySelector('.song-video-slot:not([hidden])');
+      return (
+        slot
+        && slot.getBoundingClientRect().height > 0
+        && getComputedStyle(slot).display !== 'none'
+      ) ? slot : null;
+    };
+
     const scrollPreviewPortalToTop = (preview, behavior = 'auto') => {
       const height = portalStickyHeight;
+
+      const videoSlot = visiblePreviewVideoSlot(preview);
+      if (videoSlot) {
+        const videoDocumentTop = window.scrollY + videoSlot.getBoundingClientRect().top;
+        const top = Math.max(0, videoDocumentTop - height);
+        window.scrollTo({ top, behavior });
+        return top;
+      }
 
       const frame = preview && preview.querySelector('.song-portal-stage, .song-vibeframe');
       const text = preview && preview.querySelector('.song__preview-text');
@@ -6018,6 +6272,7 @@ const vcardMedia = (() => {
           scrollPreviewPortalToTop(preview, behavior);
           requestAnimationFrame(() => {
             if (activePreview !== preview) return;
+            if (visiblePreviewVideoSlot(preview)) return;
             centerPreviewTrackVerse(preview, behavior);
           });
         });
@@ -6029,11 +6284,18 @@ const vcardMedia = (() => {
           if (activePreview !== preview) return;
           requestAnimationFrame(() => {
             scrollPreviewPortalToTop(preview, 'auto');
+            if (visiblePreviewVideoSlot(preview)) return;
             centerPreviewTrackVerse(preview, 'auto');
           });
         }, { once: true });
       }
     };
+
+    document.addEventListener('vcard:video-card-visible', (event) => {
+      const preview = event.detail && event.detail.preview;
+      if (!preview || activePreview !== preview) return;
+      schedulePortalScroll(preview, 'auto');
+    });
 
     const openSongButton = (button, options = {}) => {
       const preview = buttonPreview(button);
@@ -6131,9 +6393,26 @@ const vcardMedia = (() => {
       });
     });
 
-    // Wait until the first layout pass has created the sticky player.  This
-    // keeps the restored portal and verse aligned with its real height.
-    window.requestAnimationFrame(restoreSavedSong);
+    const restoreLinkedSong = () => {
+      const params = new URLSearchParams(window.location.search);
+      const listId = String(params.get('list') || '');
+      const songId = String(params.get('song') || '');
+      if (!listId || !songId) return false;
+      const button = buttons.find((item) => (
+        String(item.dataset.list || '') === listId
+        && String(item.dataset.song || '') === songId
+      ));
+      if (!button) return false;
+      activateList(listId);
+      openSongButton(button, { forceOpen: true, restore: true });
+      return true;
+    };
+
+    // Wait until the first layout pass has created the sticky player.  A
+    // shared song link takes precedence over the tab-local saved position.
+    window.requestAnimationFrame(() => {
+      if (!restoreLinkedSong()) restoreSavedSong();
+    });
 
     (() => {
       const triggers = Array.from(document.querySelectorAll(
@@ -6199,7 +6478,7 @@ const vcardMedia = (() => {
         .replace(/\r?\n[ \t]*(<\/(?:div|p|section)>)/gi, '$1')
         .replace(/(<br\s*\/?>)[ \t]*\r?\n/gi, '$1');
       const withUnknownSettingsTrackValues = (html) => String(html || '')
-        .replace(/%(?:SOUND|NOHASH_SOUND|MP3INFO)%/g, '?');
+        .replace(/%(?:AUTHOR|TIT|SOUND|NOHASH_SOUND|MP3INFO)%/g, '?');
       settingsTitle.innerHTML = withUnknownSettingsTrackValues(settingsTitleTemplate);
       settingsTitle.hidden = !settingsTitle.textContent.trim();
       dialog.setAttribute(
@@ -6434,6 +6713,17 @@ const vcardMedia = (() => {
       const renderState = () => {
         dialog.querySelectorAll('[sd-opt]').forEach((link) => {
           const key = link.getAttribute('sd-opt');
+          if (key === 'get-link' || key === 'save-mp3') {
+            const preview = currentSettingsPreview();
+            const available = key === 'get-link'
+              ? Boolean(songAddress(preview))
+              : isPlayableSource(preview ? resolveSource(preview) : '');
+            link.classList.remove('is-selected');
+            link.classList.toggle('is-disabled', !available);
+            link.removeAttribute('aria-current');
+            link.setAttribute('aria-disabled', available ? 'false' : 'true');
+            return;
+          }
           if (key === 'mediaCache' || key === 'full-reset') {
             const loading = link.classList.contains('is-loading');
             link.classList.remove('is-selected');
@@ -6485,23 +6775,51 @@ const vcardMedia = (() => {
       };
 
       const currentSettingsPreview = () => {
-        const visibleList = listSections.find((section) => section.style.display !== 'none');
-        return (
-          activePreview
-          || playingPreview
-          || document.querySelector('.song__preview.is-visible')
-          || (visibleList && visibleList.querySelector('.song__preview'))
-          || previews[0]
-          || null
-        );
+        return activePreview || null;
+      };
+
+      const songAddress = (preview = currentSettingsPreview()) => {
+        const button = previewButton(preview);
+        const listId = String((button && button.dataset.list) || '');
+        const songId = String((button && button.dataset.song) || '');
+        if (!listId || !songId) return '';
+        const url = new URL(window.location.href);
+        url.searchParams.set('list', listId);
+        url.searchParams.set('song', songId);
+        url.hash = '';
+        return url.href;
+      };
+
+      const copyText = async (value) => {
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+          try {
+            await navigator.clipboard.writeText(value);
+            return true;
+          } catch (_error) {}
+        }
+        const field = document.createElement('textarea');
+        field.value = value;
+        field.setAttribute('readonly', '');
+        field.style.position = 'fixed';
+        field.style.opacity = '0';
+        document.body.append(field);
+        field.select();
+        let copied = false;
+        try {
+          copied = document.execCommand('copy');
+        } catch (_error) {}
+        field.remove();
+        return copied;
       };
 
       const updateDownloadLinks = () => {
         const preview = currentSettingsPreview();
         const source = preview ? resolveSource(preview) : '';
-        content.querySelectorAll('[data-dialog-download]').forEach((link) => {
-          link.hidden = !source;
-          if (!source) {
+        content.querySelectorAll('[data-dialog-download], [sd-opt="save-mp3"]').forEach((link) => {
+          const available = isPlayableSource(source);
+          link.classList.toggle('is-disabled', !available);
+          link.setAttribute('aria-disabled', available ? 'false' : 'true');
+          if (!available) {
             link.removeAttribute('href');
             link.removeAttribute('download');
             return;
@@ -6509,16 +6827,31 @@ const vcardMedia = (() => {
           link.href = new URL(source, document.baseURI).href;
           link.download = preview.dataset.downloadName || '';
         });
+        content.querySelectorAll('[sd-opt="get-link"]').forEach((link) => {
+          const available = Boolean(songAddress(preview));
+          link.classList.toggle('is-disabled', !available);
+          link.setAttribute('aria-disabled', available ? 'false' : 'true');
+        });
       };
 
       const updateSettingsTrackInfo = (preview) => {
+        const button = previewButton(preview);
+        const author = String((preview && preview.dataset.mp3Author) || '').trim();
+        const songTitle = button
+          ? (
+            (button.querySelector('.song__player-title') || {}).textContent
+            || (button.querySelector('.song__item-text') || button).textContent
+          ).replace(/\s+/g, ' ').trim()
+          : '';
         const fileName = String((preview && preview.dataset.downloadName) || '').trim();
         const fullInfo = String((preview && preview.dataset.downloadTitle) || '').trim();
         const fileInfo = fileName && fullInfo.startsWith(fileName)
           ? fullInfo.slice(fileName.length).trim()
           : fullInfo;
-        const displayFileName = fileName || '?';
-        const displayFileInfo = fileInfo || '?';
+        const displayFileName = fileName || '—';
+        const displayFileInfo = fileInfo || '—';
+        const displayAuthor = author || '—';
+        const displaySongTitle = songTitle || '—';
         const escapeHtml = (value) => String(value || '')
           .replaceAll('&', '&amp;')
           .replaceAll('<', '&lt;')
@@ -6526,11 +6859,16 @@ const vcardMedia = (() => {
           .replaceAll('"', '&quot;')
           .replaceAll("'", '&#39;');
         content.innerHTML = settingsHtmlTemplate
+          .replaceAll('%AUTHOR%', escapeHtml(displayAuthor))
+          .replaceAll('%TIT%', escapeHtml(displaySongTitle))
           .replaceAll('%SOUND%', escapeHtml(displayFileName))
           .replaceAll('%NOHASH_SOUND%', escapeHtml(displayFileName))
           .replaceAll('%MP3INFO%', escapeHtml(displayFileInfo));
+        updateDownloadLinks();
         updateMediaCacheSummary();
         settingsTitle.innerHTML = settingsTitleTemplate
+          .replaceAll('%AUTHOR%', escapeHtml(displayAuthor))
+          .replaceAll('%TIT%', escapeHtml(displaySongTitle))
           .replaceAll('%SOUND%', escapeHtml(displayFileName))
           .replaceAll('%NOHASH_SOUND%', escapeHtml(displayFileName))
           .replaceAll('%MP3INFO%', escapeHtml(displayFileInfo));
@@ -6739,6 +7077,29 @@ const vcardMedia = (() => {
         const link = event.target.closest('[sd-opt]');
         if (!link) return;
         event.preventDefault();
+        const action = link.getAttribute('sd-opt');
+        if (action === 'get-link') {
+          if (link.getAttribute('aria-disabled') === 'true') return;
+          const address = songAddress();
+          if (!address) return;
+          const copied = await copyText(address);
+          window.alert(copied ? 'Ссылка скопирована' : `Не удалось скопировать: ${address}`);
+          return;
+        }
+        if (action === 'save-mp3') {
+          if (link.getAttribute('aria-disabled') === 'true') return;
+          const preview = currentSettingsPreview();
+          const source = preview ? resolveSource(preview) : '';
+          if (!isPlayableSource(source)) return;
+          const download = document.createElement('a');
+          download.href = new URL(source, document.baseURI).href;
+          download.download = preview.dataset.downloadName || '';
+          download.hidden = true;
+          document.body.append(download);
+          download.click();
+          download.remove();
+          return;
+        }
         if (link.getAttribute('sd-opt') === 'full-reset') {
           if (!window.confirm(
             'Сейчас буду сброшены все настройки сайта и закрыта страница, ОК?'
@@ -6891,8 +7252,8 @@ const vcardMedia = (() => {
     const root = document.documentElement;
     const STORAGE_KEY = 'vcard-background-mode';
     const IMAGE_STORAGE_KEY = 'vcard-background-image';
-    const imageListUrl = 'usr/v_bkimg/list.js';
-    const videoListUrl = 'usr/v_bkvid/list.js';
+    const imageListUrl = 'sys/v_bkimg/list.js';
+    const videoListUrl = 'sys/v_bkvid/list.js';
     const modes = ['wallpaper', 'graph1', 'graph2', 'smoke'];
     const migrateMode = (value) => ({
       off: 'wallpaper',
@@ -6905,8 +7266,8 @@ const vcardMedia = (() => {
     let backgroundMode = migrateMode(localStorage.getItem(STORAGE_KEY)) || migrateMode(localStorage.getItem('vcard-visualization')) || 'smoke';
     if (!modes.includes(backgroundMode)) backgroundMode = 'smoke';
     if (vcardFileMode && ['graph1', 'graph2'].includes(backgroundMode)) backgroundMode = 'wallpaper';
-    let images = ['usr/v_bkimg/1.jpg', 'usr/v_bkimg/2.jpg', 'usr/v_bkimg/3.jpg'];
-    let videos = ['usr/v_bkvid/smoke-loop.mp4'];
+    let images = ['sys/v_bkimg/1.jpg', 'sys/v_bkimg/2.jpg', 'sys/v_bkimg/3.jpg'];
+    let videos = ['sys/v_bkvid/smoke-loop.mp4'];
     let currentImageIndex = -1;
     let currentVideoIndex = -1;
     let backgroundIntensityOff = root.dataset.visBri === '0';
@@ -7189,8 +7550,6 @@ const vcardMedia = (() => {
     let pageColorBag = [];
     let duoThemeBag = [];
     const recentAccentColors = [];
-    let duoInitialPreview = null;
-    const currentColorPreview = () => sharedSongAudio.vcardPlayingPreview || null;
     const svgNamespace = "http://www.w3.org/2000/svg";
     const tintSvg = document.createElementNS(svgNamespace, "svg");
     const tintFilter = document.createElementNS(svgNamespace, "filter");
@@ -7527,19 +7886,15 @@ const vcardMedia = (() => {
       publishPreset("");
     }
 
-    function applyPreset(key, { randomizeDuo = false } = {}) {
+    function applyPreset(key) {
       if (!['night', 'mono', 'duo', 'newspaper'].includes(key)) return;
 
       const cycleActiveNight = key === 'night' && root.dataset.colorPreset === 'night';
       const useNightMono = cycleActiveNight && root.dataset.nightTone !== 'mono';
-      const cycleActiveDuo = key === 'duo' && root.dataset.colorPreset === 'duo';
-      const useRandomDuo = randomizeDuo || cycleActiveDuo;
       localStorage.setItem(PRESET_STORAGE_KEY, key);
       document.documentElement.style.removeProperty("--vc-win");
       localStorage.removeItem("vcard-win-color");
-      delete root.dataset.duoGray;
       if (key !== 'night') delete root.dataset.nightTone;
-      if (key !== 'duo') duoInitialPreview = null;
       if (key === 'newspaper') {
         document.dispatchEvent(new CustomEvent("vcard:set-color-scheme", {
           detail: { key: "white" }
@@ -7556,11 +7911,7 @@ const vcardMedia = (() => {
         setPalettePair(tone, tone);
         setAccent(false);
       } else if (key === 'duo') {
-        const pair = useRandomDuo
-          ? nextDuoPair()
-          : { page: '#c0c0c0', accent: '#ffd400' };
-        root.dataset.duoGray = useRandomDuo ? 'off' : 'on';
-        if (!useRandomDuo) duoInitialPreview = currentColorPreview();
+        const pair = nextDuoPair();
         document.dispatchEvent(new CustomEvent("vcard:set-color-scheme", {
           detail: { key: "black" }
         }));
@@ -7625,19 +7976,12 @@ const vcardMedia = (() => {
     });
 
     document.addEventListener('vcard:song-start', (event) => {
-      const currentPreview = (event.detail && event.detail.preview) || currentColorPreview();
+      const currentPreview = event.detail && event.detail.preview;
       if (!currentPreview) return;
       if (!vcardSettingEnabled('vcard-random-color', 'random-color', 'on')) return;
       const preset = localStorage.getItem(PRESET_STORAGE_KEY);
       if (!['mono', 'duo'].includes(preset)) return;
-      if (preset === 'duo' && root.dataset.duoGray === 'on') {
-        if (!duoInitialPreview) {
-          duoInitialPreview = currentPreview;
-          return;
-        }
-        if (currentPreview === duoInitialPreview) return;
-      }
-      applyPreset(preset, { randomizeDuo: preset === 'duo' });
+      applyPreset(preset);
     });
 
     localStorage.removeItem("vcard-auto-color");
