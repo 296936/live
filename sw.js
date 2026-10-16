@@ -1,13 +1,19 @@
-const CACHE_NAME = 'vcard-media-v1';
+const instanceName = new URL(self.location.href).searchParams.get('inst')
+  || new URL('.', self.location.href).pathname;
+const CACHE_NAME = `vcard:${encodeURIComponent(instanceName)}:media-v1`;
 
 const rangeResponse = async (response, rangeHeader) => {
   const match = /^bytes=(\d*)-(\d*)$/i.exec(rangeHeader || '');
   if (!match) return response;
+  if (!match[1] && !match[2]) return response;
   const buffer = await response.arrayBuffer();
   const size = buffer.byteLength;
   let start = match[1] === '' ? 0 : Number(match[1]);
   let end = match[2] === '' ? size - 1 : Number(match[2]);
-  if (match[1] === '') start = Math.max(0, size - end);
+  if (match[1] === '') {
+    start = Math.max(0, size - end);
+    end = size - 1;
+  }
   end = Math.min(size - 1, end);
   if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || start > end) {
     return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${size}` } });
@@ -30,23 +36,28 @@ self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim(
 const reportMediaSource = (event, url, source) => {
   const clientId = event.clientId || event.resultingClientId;
   if (!clientId) return;
-  self.clients.get(clientId).then((client) => {
+  event.waitUntil(self.clients.get(clientId).then((client) => {
     client?.postMessage({ type: 'vcard-media-source', url, source });
-  }).catch(() => {});
+  }).catch(() => {}));
 };
 
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   const url = new URL(request.url);
-  if (request.method !== 'GET' || url.origin !== self.location.origin || !url.pathname.includes('/usr/')) return;
+  const mediaPath = /\/(?:sys|usr)\//i.test(url.pathname);
+  const mediaFile = /\.(?:aac|aiff?|avif|flac|gif|jpe?g|m4a|m4v|mov|mp3|mp4|oga|ogg|ogv|opus|png|svg|wav|webm|webp)$/i.test(url.pathname);
+  if (request.method !== 'GET' || url.origin !== self.location.origin || !mediaPath || !mediaFile) return;
   event.respondWith((async () => {
-    const cache = await caches.open(CACHE_NAME);
-    const cached = await cache.match(url.href);
-    if (cached) {
-      reportMediaSource(event, url.href, 'cache');
-      return request.headers.has('Range')
-        ? rangeResponse(cached, request.headers.get('Range'))
-        : cached;
+    let cached = null;
+    try { cached = await (await caches.open(CACHE_NAME)).match(url.href); } catch (_error) { }
+    if (cached?.ok && cached.status !== 206 && !cached.headers.has('Content-Range')) {
+      try {
+        const response = request.headers.has('Range')
+          ? await rangeResponse(cached, request.headers.get('Range'))
+          : cached;
+        reportMediaSource(event, url.href, 'cache');
+        return response;
+      } catch (_error) { }
     }
     const response = await fetch(request);
     reportMediaSource(event, url.href, 'loaded');
