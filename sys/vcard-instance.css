@@ -1,0 +1,9 @@
+@font-face {
+  font-family: "ArtFont";
+  src: url("../usr/fonts/art_font.woff2") format("woff2");
+  font-display: swap;
+}
+:root {
+  --vc-page-font: "ArtFont", Arial, sans-serif;
+  --vc-song-title-font: "ArtFont", Arial, sans-serif;
+}

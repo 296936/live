@@ -1,0 +1,73 @@
+{
+  "format": "aliswb-style-params-1",
+  "style": "s_bitmap",
+  "profile_sha256": "480ab06fdbb09ebae6c837e3eb679dd5be99e129809b972d1f72cca4e485f81a",
+  "files": {
+    "002": {
+      "sha256": "9afc4495cd82ac303b50b5526cb66a6b7b3b8c30e3d38d27a4ba682c35d943e3",
+      "input_mode": "color",
+      "parameters": {
+        "threshold": 56,
+        "invert": 0,
+        "radius": 0,
+        "strength": 0,
+        "bias": 0,
+        "quality": "selected",
+        "reason": "Автоматически вычислено из выбранного s_alarm.",
+        "black": 39,
+        "white": 74,
+        "gamma": 1,
+        "out_black": 0,
+        "out_white": 255,
+        "apply_bitmap": 1,
+        "use_bitmap": 1,
+        "review_policy": "bitmap-from-alarm-v1"
+      },
+      "deploy_sha256": "068709894e8ddaa09420a8cef0e60ee8bbe655b2f77e5f251e838d34f44d9cf6"
+    },
+    "009": {
+      "sha256": "aee7216ad2a2ef6d9c47485d1d9ccaf473c838a576d5850dd99992f1e30a8f93",
+      "input_mode": "color",
+      "parameters": {
+        "threshold": 101,
+        "invert": 0,
+        "radius": 0,
+        "strength": 0,
+        "bias": 0,
+        "quality": "selected",
+        "reason": "Автоматически вычислено из выбранного s_alarm.",
+        "black": 91,
+        "white": 111,
+        "gamma": 1,
+        "out_black": 0,
+        "out_white": 255,
+        "apply_bitmap": 1,
+        "use_bitmap": 1,
+        "review_policy": "bitmap-from-alarm-v1"
+      },
+      "deploy_sha256": "27804643687c364af702fd6242a887ec5be424635adc5b91a4c7d457d6d2221e"
+    },
+    "015": {
+      "sha256": "fcbbf81c42b5daafb88c7d27eaea9f28ef09872a655ddc720d97e459d58cc76c",
+      "input_mode": "color",
+      "parameters": {
+        "threshold": 66,
+        "invert": 0,
+        "radius": 0,
+        "strength": 0,
+        "bias": 0,
+        "quality": "selected",
+        "reason": "Автоматически вычислено из выбранного s_alarm.",
+        "black": 44,
+        "white": 88,
+        "gamma": 1,
+        "out_black": 0,
+        "out_white": 255,
+        "apply_bitmap": 1,
+        "use_bitmap": 1,
+        "review_policy": "bitmap-from-alarm-v1"
+      },
+      "deploy_sha256": "557524658185bac9dc1da170ba364bc0b9d0ca6ebea1b714b6180abf41c50792"
+    }
+  }
+}

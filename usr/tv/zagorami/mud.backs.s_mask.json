@@ -1,0 +1,35 @@
+{
+  "format": "aliswb-style-params-1",
+  "style": "s_mask",
+  "profile_sha256": "ea2c9a426444adef152cf3106ee8357f1c762ce53913617a5a4d6ad04c5f0e34",
+  "files": {
+    "002": {
+      "sha256": "50b7f2a9ed7e3768c35ad4f3ccff781f1d96079757b52f2c6cd343cf2f7eb1a8",
+      "input_mode": "color",
+      "parameters": {
+        "width": 1280,
+        "height": 720,
+        "file": "002.png",
+        "source": "cobj",
+        "cobj_sha256": "2f659127e99fba17da809fdedfb373410239ddb3afb9c3923df622a9ddc97610",
+        "mask_sha256": "5ee0f903a474b330132ba134720faeab178a20d77c7bbaeb96779415117dd4f0"
+      },
+      "deploy_sha256": "be677457b0fc77249ebdd1691b97b72edb66a75381b3234e23e6dfa144c74a2e",
+      "deploy_output_sha256": "5ee0f903a474b330132ba134720faeab178a20d77c7bbaeb96779415117dd4f0"
+    },
+    "013": {
+      "sha256": "b621a13f96bce45adba7b8221997ef6aca7567f5d1ea242bfc5aa6146d05af06",
+      "input_mode": "color",
+      "parameters": {
+        "width": 1280,
+        "height": 720,
+        "file": "013.png",
+        "source": "cobj",
+        "cobj_sha256": "8d1b0e8674c9b5fa03f03794647c09051c947fbd4efe37332a582291e18e51c6",
+        "mask_sha256": "f9771c7355fb6c67ce031b3b977d2312b2c24065dc01df2258aab1adc80180e0"
+      },
+      "deploy_sha256": "171e13f76f8b60b5f55e21d4291a6fe39ebe80e61b42deb701053ba93c043715",
+      "deploy_output_sha256": "f9771c7355fb6c67ce031b3b977d2312b2c24065dc01df2258aab1adc80180e0"
+    }
+  }
+}
