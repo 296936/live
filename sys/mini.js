@@ -10,7 +10,10 @@
   const nav = document.getElementById('navigation');
   const playButton = document.getElementById('play');
   const seek = document.getElementById('seek');
+  const volume = document.getElementById('volume');
   const clock = document.getElementById('time');
+  const currentClock = document.getElementById('current-time');
+  const totalClock = document.getElementById('total-time');
   const status = document.getElementById('status');
   const systemTheme = matchMedia('(prefers-color-scheme: dark)');
   const textCache = new Map();
@@ -37,6 +40,30 @@
   let preloadRunning = false;
   let swReady = null;
   let statusTimer;
+  let volumeContext = null;
+  let volumeGain = null;
+  // Native volume is sufficient on desktop. Engines that keep it read-only
+  // get a gain node only after a volume-slider gesture, never at page startup.
+  volume.addEventListener('input', async () => {
+    const value = Number(volume.value) / 100;
+    try {
+      if (!volumeContext) {
+        audio.volume = value;
+        if (Math.abs(audio.volume - value) < 0.001) return;
+        const Context = window.AudioContext || window.webkitAudioContext;
+        if (!Context) throw new Error('Volume unavailable');
+        volumeContext = new Context();
+      }
+      await volumeContext.resume();
+      if (volumeContext.state !== 'running') throw new Error('Volume suspended');
+      if (!volumeGain) {
+        const source = volumeContext.createMediaElementSource(audio);
+        volumeGain = volumeContext.createGain();
+        source.connect(volumeGain).connect(volumeContext.destination);
+      }
+      volumeGain.gain.setTargetAtTime(Number(volume.value) / 100, volumeContext.currentTime, 0.02);
+    } catch (_) { message('Регулятор недоступен. Используйте кнопки громкости устройства.'); }
+  });
   const allLists = () => [...userLists, ...data.playlists];
   const listById = id => allLists().find(l => l.id === id);
   const selected = (list, key) => !(Array.isArray(excluded[list.id]) && excluded[list.id].includes(key));
@@ -52,7 +79,7 @@
   }
   function applyPreferences() {
     document.documentElement.dataset.theme = preferences.theme === 'system' ? (systemTheme.matches ? 'dark' : 'light') : preferences.theme;
-    document.documentElement.style.setProperty('--lyrics-size', `${preferences.fontSize}px`);
+    document.documentElement.style.fontSize = `${preferences.fontSize}px`;
   }
   systemTheme.addEventListener('change', applyPreferences);
   applyPreferences();
@@ -78,14 +105,14 @@
       url.searchParams.set('song', song.id);
       if (listById(view.list)?.user) url.searchParams.set('entry', song.key);
     }
-    if (view.kind === 'opt') url.searchParams.set('view', 'opt');
+    if (['opt','map'].includes(view.kind)) url.searchParams.set('view', view.kind);
     return url.href;
   }
   function readRoute() {
     const params = new URL(location.href).searchParams;
     const list = listById(params.get('list'));
     const song = list?.songs.find(key => key === params.get('entry') || data.songs[key]?.id === params.get('song'));
-    return {kind: params.get('view') === 'opt' ? 'opt' : song ? 'song' : list ? 'list' : 'root', list:list?.id || '', song:song || ''};
+    return {kind: ['opt','map'].includes(params.get('view')) ? params.get('view') : song ? 'song' : list ? 'list' : 'root', list:list?.id || '', song:song || ''};
   }
   function link(text, view) {
     const node = el('a', text);
@@ -105,7 +132,7 @@
   }
   window.addEventListener('popstate', () => { route = readRoute(); content.scrollTop = 0; render(); });
   function navigation() {
-    nav.replaceChildren(link('OPT', {...route, kind:'opt'}), document.createTextNode(' | '), link('ROOT', {kind:'root'}));
+    nav.replaceChildren(link('OPT', {...route, kind:'opt'}), document.createTextNode(' | '), link('MAP', {...route, kind:'map'}), document.createTextNode(' | '), link('ROOT', {kind:'root'}));
     const list = listById(route.list || playingList);
     if (list) nav.append(document.createTextNode(' > '), link(list.title, {kind:'list', list:list.id}));
     const song = data.songs[route.song || ((!route.list || list?.songs.includes(current?.key)) ? current?.key : '')];
@@ -186,6 +213,18 @@
     lyricsVerses = [];
     activeVerse = -1;
     if (route.kind === 'opt') { settings(); return; }
+    if (route.kind === 'map') {
+      for (const group of data.map || []) {
+        const list = data.playlists.find(p => p.id === group.list);
+        if (!list) continue;
+        const section = el('section', undefined, 'map-group');
+        const flow = el('p', `(${list.short || list.id}) `);
+        for (const key of list.songs) flow.append(link(data.songs[key].id, {kind:'song', list:list.id, song:key}), document.createTextNode(' '));
+        section.append(el('h2', group.title), flow);
+        screen.append(section);
+      }
+      return;
+    }
     if (route.kind === 'root') {
       screen.append(el('h2', 'Плейлисты'));
       const ul = el('ul');
@@ -302,6 +341,7 @@
     }
     // Invoke play in the user gesture; neither cache nor text loading gates it.
     const expected = current.key;
+    volumeContext?.resume().catch(() => {});
     audio.play().catch(error => { if (current?.key === expected && error.name !== 'AbortError') message('Не удалось начать воспроизведение. Нажмите PLAY ещё раз.'); });
   }
   function advance(direction) {
@@ -327,7 +367,9 @@
     const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0;
     seek.disabled = !duration;
     seek.value = duration ? Math.round(audio.currentTime / duration * 1000) : 0;
-    clock.textContent = `${time(audio.currentTime)} / ${time(duration)}`;
+    currentClock.textContent = time(audio.currentTime);
+    totalClock.textContent = ` / ${time(duration)}`;
+    clock.title = `${time(audio.currentTime)} / ${time(duration)}`;
   }
   for (const event of ['play','pause','loadedmetadata','durationchange','emptied']) audio.addEventListener(event, syncPlayer);
   audio.addEventListener('timeupdate', () => { syncPlayer(); track(); });
@@ -357,7 +399,12 @@
   }
   function setting(label, node) {
     node.setAttribute('aria-label', label);
-    const row = el('label', label, 'setting'); row.append(node); screen.append(row);
+    const boundary = label.lastIndexOf(' ');
+    const row = el('label', boundary < 0 ? '' : label.slice(0,boundary + 1), 'setting');
+    const tail = el('span', label.slice(boundary + 1), 'setting-tail');
+    tail.append(document.createTextNode(' '), node);
+    row.append(tail);
+    screen.append(row);
   }
   function settings() {
     screen.append(el('h2', 'Настройки'));
@@ -372,26 +419,36 @@
     for (const value of [16,18,20,24,28,32,36]) { const option = el('option', `${value}`); option.value = value; size.append(option); }
     size.value = preferences.fontSize;
     size.addEventListener('change', () => { preferences.fontSize = Number(size.value); persist(); applyPreferences(); });
-    setting('Размер текста', size);
+    setting('Размер шрифта', size);
     for (const [name,label] of [['tracking','Сопровождение куплета'],['autoNext','Следующая песня автоматически'],['shuffle','Перемешивать песни']]) {
       const input = el('input'); input.type = 'checkbox'; input.checked = Boolean(preferences[name]);
       input.addEventListener('change', () => { preferences[name] = input.checked; nextCandidate = null; persist(); });
       setting(label, input);
     }
     screen.append(el('h2', 'Кэш'));
-    const info = el('p', 'Информация загружается по запросу.');
+    const info = el('p', 'Загрузка информации о кэше…');
     screen.append(info);
-    const tools = el('div', undefined, 'list-actions');
-    tools.append(action('Инфо', async () => {
+    let infoRevision = 0;
+    const refreshCacheInfo = async () => {
+      const revision = ++infoRevision;
       try {
         const cache = await caches.open(cacheName);
         const entries = await cache.keys();
         let bytes = 0;
-        for (const key of entries) { const response = await cache.match(key); bytes += (await response.blob()).size; }
-        info.textContent = `${entries.length} файлов · ${(bytes / 1048576).toFixed(1)} МБ`;
-      } catch (_) { info.textContent = 'Кэш недоступен в этом браузере.'; }
-    }), action('ПрогрузитьВсё', async () => {
+        for (const key of entries) {
+          const response = await cache.match(key);
+          if (!response) continue;
+          const length = Number(response.headers.get('Content-Length'));
+          bytes += length > 0 ? length : (await response.blob()).size;
+        }
+        if (info.isConnected && revision === infoRevision) info.textContent = `${entries.length} файлов · ${(bytes / 1048576).toFixed(1)} МБ`;
+      } catch (_) { if (info.isConnected && revision === infoRevision) info.textContent = 'Кэш недоступен в этом браузере.'; }
+    };
+    refreshCacheInfo();
+    const tools = el('div', undefined, 'list-actions');
+    tools.append(action('ПрогрузитьВсё', async () => {
       if (preloadRunning) return;
+      infoRevision++;
       preloadRunning = true;
       const generation = cacheGeneration;
       const urls = [...new Set([...Object.values(data.songs).map(s => s.audio).filter(Boolean), ...data.playlists.map(p => p.text)])];
@@ -405,6 +462,7 @@
       } catch (_) { info.textContent = `Прогружено ${count}/${urls.length}. Загрузка остановлена из-за ошибки.`; }
       finally { preloadRunning = false; }
     }), action('Очистить', async () => {
+      infoRevision++;
       cacheGeneration++;
       const jobs = [...cacheJobs.values()];
       jobs.forEach(j => j.abort.abort());
@@ -412,7 +470,7 @@
       try { await caches.delete(cacheName); info.textContent = 'Кэш очищен.'; }
       catch (_) { info.textContent = 'Не удалось очистить кэш.'; }
     }));
-    screen.append(tools, el('p', `Профиль: ${data.instance} · ${data.generatedAt}`));
+    screen.append(tools);
   }
   function ensureWorker() {
     if (!('serviceWorker' in navigator) || location.protocol === 'file:') return Promise.resolve();
