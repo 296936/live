@@ -187,23 +187,12 @@
           const name = document.createElement('span'); name.className = 'tabs__label'; name.textContent = list.name;
           const count = document.createElement('sup'); count.textContent = String(this.entries(list.id).length);
           caption.append(name, count); tab.append(caption);
-          group.querySelector('.tabs-block').insertBefore(tab, group.querySelector('.tabs__item:not([data-user-list])'));
+          group.querySelector('.tabs-block').insertBefore(tab, group.querySelector('.tabs__item:not([data-user-list]):not([data-release-map])'));
           this.tabs.push(tab);
-          const label = document.createElement('label'); label.className = 'tabs__check'; label.dataset.userList = '';
-          const check = document.createElement('input'); check.type = 'checkbox'; check.dataset.playlistCheck = list.id;
-          check.setAttribute('aria-label', `Выбрать песни списка ${list.name}`); label.append(check);
-          const checks = group.querySelector('.tabs__checks');
-          checks.insertBefore(label, checks.querySelector('.tabs__check:not([data-user-list])'));
+
         }
       }
       this.sync();
-    }
-    prepareCheck(entry, title) {
-      if (title.querySelector('[data-song-check]')) return;
-      const input = document.createElement('input');
-      input.type = 'checkbox'; input.className = 'song__selection'; input.dataset.songCheck = entry.releaseKey;
-      input.setAttribute('aria-label', `Выбрать песню ${entry.title}`);
-      title.prepend(input); this.controls.set(input, entry);
     }
     restoreCards() {
       for (const [node, marker] of this.origins) {
@@ -233,10 +222,6 @@
           }
           this.mounted = id;
         }
-      }
-      for (const entry of this.entries(id)) {
-        const title = this.titleFor(entry);
-        if (title?.classList.contains('song__title')) this.prepareCheck(entry, title);
       }
       this.sync();
     }

@@ -452,6 +452,12 @@ h1 {
   color: var(--vc-acc);
 }
 
+[ids="tits"] h1 [data-title-dblclick] {
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
 /* Raise only SStars asterisks; retain the surrounding title's font size/line box. */
 .song__mark-stars {
   position: relative;
@@ -564,7 +570,7 @@ a.song-video-link:visited {
 
 .song-portal-stage + .song-video-links:has(> .song-video-link) {
   /* Keep the video links centered in the gap between PortalTV and lyrics. */
-  margin-top: calc(1.291667em + var(--link-line-width));
+  margin-top: 1.333333em;
 }
 
 a.song-video-link:is(:hover, :focus-visible, :active, .is-active) {
@@ -864,10 +870,20 @@ a.song-video-link:focus-visible {
   position: static;
   display: inline-grid;
   vertical-align: middle;
-  margin-right: 0.3em;
+  flex: none;
+  margin: 0;
 }
 
-.tabs__item.tabs__item--user { height: 5.375em; align-self: flex-end; }
+.song__heading-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+  max-width: 100%;
+}
+
+.song__heading-row > .song__item { margin-inline: 0; }
+
+.tabs__item:is(.tabs__item--user, .tabs__item--rmap) { height: 5.375em; align-self: flex-end; }
 .tabs__item--user .tabs__caption {
   font-family: var(--vc-tech-font);
   font-size: 0.55em;
@@ -875,7 +891,27 @@ a.song-video-link:focus-visible {
   overflow-wrap: anywhere;
   line-height: 1.1;
 }
-.tabs-block--bottom .tabs__item--user { align-self: flex-start; }
+.tabs-block--bottom :is(.tabs__item--user, .tabs__item--rmap) { align-self: flex-start; }
+
+.list.release-map {
+  display: block;
+  width: var(--cassette-line-width);
+  max-width: 100%;
+  font-family: var(--vc-tech-font);
+  line-height: 1.45;
+  text-align: left;
+  column-count: var(--rmap-columns, 1);
+  column-fill: balance;
+  column-gap: 1.2em;
+}
+.release-map__entry { break-inside: avoid; text-align: left; }
+.release-map__date { color:var(--vc-acc); }
+.release-map__list { color:color-mix(in srgb,var(--vc-text) 55%,var(--vc-win)); }
+.release-map__song { color:var(--vc-text); }
+.release-map__year-gap { height: 1.45em; break-inside: avoid; }
+@media (orientation: landscape) {
+  .release-map__entry { white-space: nowrap; }
+}
 
 .vcard-list-dialog {
   box-sizing: border-box;
@@ -1075,8 +1111,14 @@ a.song-video-link:focus-visible {
 
 @media (orientation: portrait) {
   :root {
+    --cassette-line-width: var(--block-full-width);
     --portal-small-width: 100%;
     --portal-mid-width: 100%;
+  }
+
+  .tabs-selector__inner,
+  .list.release-map {
+    padding-inline: 0;
   }
 }
 
@@ -1133,13 +1175,17 @@ a.song-video-link:focus-visible {
   margin-top: 1.333333em;
 }
 
+.list--flow > .song__preview.is-visible:has(> .song-video-links > .song-video-link[href]:not([href=""])) {
+  margin-top: 0;
+}
+
 .list--flow > .song__preview.is-visible:has(> .song__preview-text) {
   /* The former text bottom margin is internal space of the open preview. */
   padding-bottom: 1.666667em;
 }
 
 .list--flow .song-video-links {
-  margin-bottom: 0;
+  margin-block: 1.333333em;
 }
 
 .list--flow .song__preview-text {
@@ -1149,8 +1195,7 @@ a.song-video-link:focus-visible {
 
 .list--flow .song-video-links:has(> .song-video-link[href]:not([href=""]))
   + .song__preview-text {
-  /* The lower half of the centered PortalTV-video-links gap. */
-  margin-top: 1.291667em;
+  margin-top: 0;
 }
 
 .footer--flow[ids="about"] {
@@ -1274,7 +1319,7 @@ button {
 }
 
 .vcard-settings {
-  overflow-x: auto;
+  overflow: visible;
   white-space: pre-wrap;
 }
 
@@ -1474,4 +1519,14 @@ button {
     gap: 0.15em;
   }
 }
-.vcard-mobile-link { text-align: center; margin: 0.3em 0 0; }
+.vcard-mobile-link { display: block; text-align: center; margin: 1.3em 0 0; }
+#vcard-mini-link {
+  text-decoration: underline;
+  text-decoration-color: var(--vc-text);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.15em;
+  text-decoration-skip-ink: none;
+}
+#vcard-mini-link:is(:hover, :focus-visible, :active, .is-active) {
+  text-decoration-color: var(--vc-win);
+}

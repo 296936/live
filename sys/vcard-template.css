@@ -5,6 +5,7 @@
   --def-volume-boost: 1;
   --def-preset: auto;
   --def-last-preset: duo;
+  --track-verse-scroll-settle-ms: 350;
   --def-visualization: h;
   --def-visualization-choice: h;
   --def-trackplay: on;
@@ -55,6 +56,6 @@
   --about-font-weight: 400;
   --song-year-weight: 400;
   --crossani-duo-filter: grayscale(1) url("#vc-accent-tint");
-  --crossani-night-filter: grayscale(1) url("#vc-yellow-tint");
+  --crossani-night-filter: grayscale(1) url("#vc-accent-tint");
   --crossani-fallback-opacity: 0.8;
 }
