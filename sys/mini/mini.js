@@ -294,6 +294,7 @@
   function navigation() {
     const navLink = (text, view) => {
       const node = link(text, view);
+      node.dataset.miniView = view.kind;
       if (view.kind === route.kind) node.setAttribute('aria-current', 'page');
       return node;
     };
@@ -309,9 +310,9 @@
     }
     full.setAttribute('href', `../${fullUrl.search}`);
     const list = listById(route.list);
-    if (list) lists.append(document.createTextNode(' > '), navLink(list.user ? list.title : list.id.toUpperCase(), {kind:'list', list:list.id}));
+    if (list) lists.append(document.createTextNode('>'), navLink(list.user ? list.title : list.id.toUpperCase(), {kind:'list', list:list.id}));
     const song = data.songs[route.song];
-    if (song) lists.append(document.createTextNode(' > '), navLink(song.title, {kind:'song', list:list?.id || song.list, song:song.key}));
+    if (song) lists.append(document.createTextNode('>'), navLink(song.title, {kind:'song', list:list?.id || song.list, song:song.key}));
     for (const slot of navSlots) {
       const kind = slot.dataset.miniNav;
       if (kind === 'opt') slot.replaceChildren(navLink(navLabels.opt ?? 'Настройки', {...route, kind:'opt'}));
